@@ -3,21 +3,14 @@
 Plugin Name: MG WP to t.sina.com
 Plugin URI: http://www.bymg.com/wordpress-plugins/mg-wp2tsina
 Description: 将博客信息推送到新浪微博上
-Version: 1.0.5
+Version: 1.1.0 Alpha1
 Author: Mike Gaul
 Author URI: http://www.bymg.com
 */
 
-
-/**
- *
- * @link http://fairyfish.net/2010/06/17/wp-sina-t/
- *
- */
-
 if(preg_match('#' . basename(__FILE__) . '#', $_SERVER['PHP_SELF'])) { die('You are not allowed to call this page directly.'); }
 
-if(!defined('MG_WP2TSINA_ABSPATH')) define('MG_WP2TSINA_ABSPATH', ABSPATH.'wp-content/plugins/mg-wp2tsina' );
+if(!defined('MG_WP2TSINA_ABSPATH')) define('MG_WP2TSINA_ABSPATH', ABSPATH.'/'.PLUGINDIR.'/mg-wp2tsina' );
 
 if (!class_exists('Snoopy'))
     require_once(MG_WP2TSINA_ABSPATH.'/Snoopy.class.php');
@@ -26,13 +19,12 @@ if (!class_exists('twSina'))
 
 class mgPlugin_WP2TSina {
     
-    var $app_key = '4240729813';
-    var $app_password = '372fa31b2b69e08124b2b92445cf59b9';
+    var $app_key = '4249926013';
+    var $app_password = '97fb7350dcb36f1703607d51a4f83650';
     
     var $user_id = '';
     var $user_password = '';
     
-    var $use_sync = true; // 是否启用同步
     var $if_force_sync = false; // 判断是否强制更新
     
     var $tsina = '';
@@ -41,6 +33,8 @@ class mgPlugin_WP2TSina {
     
     function mgPlugin_WP2TSina()
     {
+        global $post;
+        
         $this->tsina = new twSina();
         
         $this->options = get_option('mg_wp2tsina');
@@ -53,13 +47,33 @@ class mgPlugin_WP2TSina {
             $options['sina_app_password'] = $this->app_password;
         }
         
-        if (empty($this->options['logo'])) $this->options['logo'] = '1';
-        
         if (!empty($this->options['user_id']) && !empty($this->options['user_password'])) {
             $this->tsina->user($this->options['user_id'], $this->options['user_password']);
         }
         
-        add_filter('the_content', array($this, 'show_logo_in_synced_post'));
+        if (empty($this->options['logo'])) $this->options['logo'] = '1';
+        
+        if (empty($this->options['delete'])) $this->options['delete'] = 1; // 默认彻底删除文章时，同步删除对应的新浪微博信息
+        
+        if (is_admin()) {
+            add_action('admin_init', array(&$this, 'admin_init'));
+            add_action('save_post', array(&$this, 'sync'), 0);
+            add_action('admin_menu', array(&$this, 'add_options_page'));
+            add_action('admin_menu', array(&$this, 'add_custom_box_sidebox'));
+            add_action('admin_notices', array(&$this, 'admin_notices'));
+            if ($this->options['delete'] == 1) {
+                add_action('delete_post', array(&$this, '__delete_tsina'));
+            }
+        }elseif (defined('XMLRPC_REQUEST')) {
+            add_action('xmlrpc_publish_post', array(&$this, 'sync'), 0);
+        }elseif (defined('APP_REQUEST')) {
+            add_action('app_publish_post', array(&$this, 'sync'), 0);
+        }else {
+            // 如果要在文章详细页中显示同步标识
+            if ($this->options['show_message_in_post']) {
+                add_filter('the_content', array(&$this, 'show_logo_in_synced_post'));
+            }
+        }
     }
     
     function admin_init()
@@ -70,9 +84,20 @@ class mgPlugin_WP2TSina {
     // 同步
     function sync($pID)
     {
-        if (!$this->use_sync) return false; // 判断是否开启同步
+        // 使用这种方式读取，解决XMLRPC操作没有$_POST变量的问题
+        $post = wp_get_single_post($pID, ARRAY_A);
         
-        if (empty($_POST['mg_wp2tsina_doit'])) return false; // 判断用户在编辑页面是否选择同步
+        if (!empty($_POST['mg_wp2tsina_doit'])) { // 如果勾选了同步选项
+            // do nothing
+        }elseif (strstr($post['post_content'], '#wp2tsina#')) { // 或者在文章内包含了 #wp2tsina#
+            // 去掉文章内容中的同步标识
+            global $wpdb;
+            $wpdb->query("
+	            UPDATE $wpdb->posts SET post_content = REPLACE(post_content, '#wp2tsina#', '')
+	            WHERE ID = {$pID}");
+        }else {
+            return false;
+        }
         
         // 判断是否已经被同步
         // 如果已经同步过了，则删除就的再次同步新的
@@ -85,8 +110,8 @@ class mgPlugin_WP2TSina {
         
         // 加入分类
         if (!empty($this->options['msg']['categories'])) {
-            if (!empty($_POST['post_category'])) {
-                foreach ($_POST['post_category'] as $cat_ID) {
+            if (!empty($post['post_category'])) {
+                foreach ($post['post_category'] as $cat_ID) {
                     if (intval($cat_ID) > 0) {
                         $text .= get_cat_name($cat_ID).',';
                     }
@@ -96,7 +121,7 @@ class mgPlugin_WP2TSina {
         }
         
         // 加入标题
-        $text .= stripslashes('《'.strip_tags($_POST['post_title']).'》');
+        $text .= stripslashes('《'.strip_tags($post['post_title']).'》');
         
         // 加入TAG
         if (!empty($this->options['msg']['tags'])) {
@@ -117,12 +142,12 @@ class mgPlugin_WP2TSina {
         
         // 加入文章摘要
         if (!empty($this->options['msg']['excerpt'])) {
-            if (!empty($_POST['excerpt'])) {
-                $excerpt = strip_tags($_POST['excerpt']);
+            if (!empty($post['post_excerpt'])) {
+                $excerpt = strip_tags($post['post_excerpt']);
                 $excerpt = preg_replace('/[\t\r\n ]/i', '', $excerpt);
                 $text .= $excerpt;
-            }elseif (!empty($_POST['content'])) {
-                $excerpt .= strip_tags($_POST['content']);
+            }elseif (!empty($post['post_content'])) {
+                $excerpt .= strip_tags($post['post_content']);
                 $excerpt = preg_replace('/[\t\r\n ]/i', '', $excerpt);
                 $text .= $excerpt;
             }
@@ -154,7 +179,7 @@ class mgPlugin_WP2TSina {
         //}}} 对信息长度进行处理
         
         // 如果存在文章内容或者摘要，那么被截断后加入省略号
-        if (!empty($_POST['excerpt']) || !empty($_POST['content'])) {
+        if (!empty($post['post_excerpt']) || !empty($post['post_content'])) {
             $text .= '...';
         }
         
@@ -189,6 +214,17 @@ class mgPlugin_WP2TSina {
         if ($res) {
             update_post_meta($pID, 'mg_wp2tsina_id', $res); // 发布成功，则将id进行存储
             return true;
+        }else {
+            return false;
+        }
+    }
+    
+    // 删除指定post对应的新浪微博信息
+    function __delete_tsina($pID)
+    {
+        if (intval($pID) > 0) {
+            $tsina_id = get_post_meta($pID, 'mg_wp2tsina_id', true);
+            return !!$tsina_id && $this->tsina->del($tsina_id);
         }else {
             return false;
         }
@@ -267,25 +303,64 @@ class mgPlugin_WP2TSina {
     
     function show_logo_in_synced_post($content)
     {
-        if (!$this->options['show_message_in_post']) return $content;
-    
         global $post;
         
         if (!is_single($post->ID)) return $content;
         
         if ($tsina_id = get_post_meta($post->ID, 'mg_wp2tsina_id', true)) {
+        
+            $pic = ''; // 分享用的图片地址
+            
+            // 获得标题图片
+            if (function_exists('get_post_thumbnail_id') &&
+                function_exists('wp_attachment_is_image') &&
+                function_exists('get_attached_file')) {
+                
+                $aid = get_post_thumbnail_id($post->ID);
+                if ($aid && wp_attachment_is_image($aid)) {
+                    $pic = wp_get_attachment_url($aid);
+                }
+            }
+            
+            // 读取第一张完整路径的图片地址
+            if (!$pic) {
+                preg_match('/<img[^>]+?src=[\'"](http:\/\/.+?)[\'"]/', $content, $matches);
+                if (!empty($matches[1])) {
+                    $pic = $matches[1];
+                }
+            }
+            
             $logo_url = WP_PLUGIN_URL.'/mg-wp2tsina/logo-'.$this->options['logo'].'.png';
             $tsina_user_home = 'http://t.sina.com.cn/'.$this->options['user_id'];
             $blogname = get_bloginfo('name');
             
+            // 标识开始部分
             $out = <<<HTML
 
+<!-- mg-wp2tsina -->
 <div id="mgWP2TSina_SyncMessage" class="mgWP2TSina_SyncMessage">
-    <div class="mgWP2TSina_logo"><a href="{$tsina_user_home}" target="_blank" rel="nofollow"><img src="{$logo_url}" /></a></div>
-    <div class="mgWP2TSina_message">本文已经同步到新浪微博，<a href="{$tsina_user_home}" target="_blank" rel="nofollow">点击这里</a>访问“{$blogname}”的官方微博。</div>
-</div>
 
 HTML;
+            
+            // 标识图标部分
+            if ($this->options['logo'] > 0) {
+                $out .= <<<HTML
+
+        <div class="mgWP2TSina_logo"><a href="{$tsina_user_home}" target="_blank" rel="nofollow"><img src="{$logo_url}" /></a></div>
+
+HTML;
+            }
+            
+            // 标识剩余文本部分
+            $out .= <<<HTML
+
+    <div class="mgWP2TSina_message">本文已经同步到新浪微博，<a href="{$tsina_user_home}" target="_blank" rel="nofollow">点击这里</a>访问“{$blogname}”的官方微博。</div>
+    <div class="mgWP2TSina_share"><a href="javascript:void((function(s,d,e,r,l,p,t,z,c){var%20f='http://v.t.sina.com.cn/share/share.php?appkey={$this->app_key}',u=z||d.location,p=['&url=',e(u),'&title=',e(t||d.title),'&source=',e(r),'&sourceUrl=',e(l),'&content=',c||'gb2312','&pic=',e(p||'')].join('');function%20a(){if(!window.open([f,p].join(''),'mb',['toolbar=0,status=0,resizable=1,width=440,height=430,left=',(s.width-440)/2,',top=',(s.height-430)/2].join('')))u.href=[f,p].join('');};if(/Firefox/.test(navigator.userAgent))setTimeout(a,0);else%20a();})(screen,document,encodeURIComponent,'','','{$pic}','{$post->post_title}','{$post->guid}','utf-8'));">分享至微博</a></div>
+</div>
+<!-- // mg-wp2tsina -->
+
+HTML;
+
             $content .= $out;
         }
         
@@ -370,11 +445,4 @@ HTML;
 }
 
 $mg_wp2tsina = new mgPlugin_WP2TSina();
-if (is_admin()) {
-    add_action('admin_init', array($mg_wp2tsina, 'admin_init'));
-    add_action('save_post', array($mg_wp2tsina, 'sync'), 0);
-    add_action('admin_menu', array($mg_wp2tsina, 'add_options_page'));
-    add_action('admin_menu', array($mg_wp2tsina, 'add_custom_box_sidebox'));
-    add_action('admin_notices', array($mg_wp2tsina, 'admin_notices'));
-}
 ?>
