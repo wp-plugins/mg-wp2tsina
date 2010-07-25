@@ -3,7 +3,7 @@
 Plugin Name: MG WP to t.sina.com
 Plugin URI: http://www.bymg.com/wordpress-plugins/mg-wp2tsina
 Description: 将博客信息推送到新浪微博上
-Version: 1.1.0 Alpha1
+Version: 1.1.0 Beta1
 Author: Mike Gaul
 Author URI: http://www.bymg.com
 */
@@ -19,9 +19,6 @@ if (!class_exists('twSina'))
 
 class mgPlugin_WP2TSina {
     
-    var $app_key = '4249926013';
-    var $app_password = '97fb7350dcb36f1703607d51a4f83650';
-    
     var $user_id = '';
     var $user_password = '';
     
@@ -31,21 +28,13 @@ class mgPlugin_WP2TSina {
     
     var $options = array(); // 配置信息存放
     
+    var $post = null; // 用来存储当前文章的信息
+    
     function mgPlugin_WP2TSina()
     {
-        global $post;
-        
         $this->tsina = new twSina();
         
         $this->options = get_option('mg_wp2tsina');
-        
-        if (!empty($this->options['sina_app_key']) && !empty($this->options['sina_app_password'])) {
-            $this->tsina->appkey = $this->options['sina_app_key'];
-            $this->tsina->appsec = $this->options['sina_app_password'];
-        }else {
-            $options['sina_app_key'] = $this->app_key;
-            $options['sina_app_password'] = $this->app_password;
-        }
         
         if (!empty($this->options['user_id']) && !empty($this->options['user_password'])) {
             $this->tsina->user($this->options['user_id'], $this->options['user_password']);
@@ -85,15 +74,17 @@ class mgPlugin_WP2TSina {
     function sync($pID)
     {
         // 使用这种方式读取，解决XMLRPC操作没有$_POST变量的问题
-        $post = wp_get_single_post($pID, ARRAY_A);
+        $this->post = get_post($pID);
         
         if (!empty($_POST['mg_wp2tsina_doit'])) { // 如果勾选了同步选项
             // do nothing
-        }elseif (strstr($post['post_content'], '#wp2tsina#')) { // 或者在文章内包含了 #wp2tsina#
+        }elseif (strstr($this->post->post_content, '{wp2tsina}')) { // 或者在文章内包含了 {wp2tsina}
             // 去掉文章内容中的同步标识
+            $this->post->post_content = str_replace('{wp2tsina}', '', $this->post->post_content);
+            
             global $wpdb;
             $wpdb->query("
-	            UPDATE $wpdb->posts SET post_content = REPLACE(post_content, '#wp2tsina#', '')
+	            UPDATE $wpdb->posts SET post_content = REPLACE(post_content, '{wp2tsina}', '')
 	            WHERE ID = {$pID}");
         }else {
             return false;
@@ -106,84 +97,7 @@ class mgPlugin_WP2TSina {
             delete_post_meta($pID, 'mg_wp2tsina_id');
         }
         
-        $text = '';
-        
-        // 加入分类
-        if (!empty($this->options['msg']['categories'])) {
-            if (!empty($post['post_category'])) {
-                foreach ($post['post_category'] as $cat_ID) {
-                    if (intval($cat_ID) > 0) {
-                        $text .= get_cat_name($cat_ID).',';
-                    }
-                }
-            }
-            $text = substr($text, 0, -1).':';
-        }
-        
-        // 加入标题
-        $text .= stripslashes('《'.strip_tags($post['post_title']).'》');
-        
-        // 加入TAG
-        if (!empty($this->options['msg']['tags'])) {
-            $posttags = get_the_tags($pID); 
-            if ($posttags) {
-                $tag_text = '';
-                
-                foreach ($posttags as $tag) {
-                    $temp = preg_replace('/[\.\/|]/', '#,#', $tag->name);
-                    $tag_text .= "#{$temp}#,";
-                }
-            }
-            
-            if (!empty($tag_text)) {
-                $text .= ' 关键词:'.substr($tag_text, 0, -1).' ';
-            }
-        }
-        
-        // 加入文章摘要
-        if (!empty($this->options['msg']['excerpt'])) {
-            if (!empty($post['post_excerpt'])) {
-                $excerpt = strip_tags($post['post_excerpt']);
-                $excerpt = preg_replace('/[\t\r\n ]/i', '', $excerpt);
-                $text .= $excerpt;
-            }elseif (!empty($post['post_content'])) {
-                $excerpt .= strip_tags($post['post_content']);
-                $excerpt = preg_replace('/[\t\r\n ]/i', '', $excerpt);
-                $text .= $excerpt;
-            }
-        }
-        
-        $text = htmlspecialchars_decode($text); // 处理HTML的特殊字符
-        
-        // 获得短链接
-        if (function_exists('wp_get_shortlink')) {
-            $shortlink = wp_get_shortlink($pID);
-        }else {
-            $shortlink = get_bloginfo('wpurl')."/?p={$pID}";
-        }
-        
-        //{{{ 对信息长度进行处理
-        $shortlink_length = strlen($shortlink);
-        $text_length = $this->tsina->msg_length($text);
-        $drop_length = $shortlink_length + $text_length - 140 - 2; // -2是因为后面需要加入省略号
-        if ($drop_length > 0) {
-            $text = $this->tsina->substr($text, $text_length - $drop_length);
-        }
-        
-        // 检查裁剪长度后，#是否是偶数，如果不是则去掉最后一个#到结尾的字符串
-        $topic_flag_count = substr_count($text, '#');
-        if ($topic_flag_count%2 !== 0) {
-            $text = preg_replace('/(.*)#.*?$/', '$1', $text);
-        }
-        $text = preg_replace('/,$/', '', $text); // 处理掉最后一个逗号(如果有的话)
-        //}}} 对信息长度进行处理
-        
-        // 如果存在文章内容或者摘要，那么被截断后加入省略号
-        if (!empty($post['post_excerpt']) || !empty($post['post_content'])) {
-            $text .= '...';
-        }
-        
-        $text .= ' '.$shortlink;
+        $text = $this->__get_tsina_content();
         
         // 获得标题图片
         if (function_exists('get_post_thumbnail_id') &&
@@ -244,6 +158,15 @@ class mgPlugin_WP2TSina {
         $options['user_id'] = preg_replace('/[^\d]+/', '', $options['user_id']);
         if (!preg_match('/^[a-zA-Z\d\.\-\?_]{6,16}$/', $options['user_password'])) {
             $options['user_password'] = '';
+        }
+        
+        // 微博信息组成如果用户都不选，那么发布信息的时候会使用文章标题作为内容主体
+        if ( empty($options['msg']['title']) &&
+             empty($options['msg']['categories']) &&
+             empty($options['msg']['excerpt']) &&
+             empty($options['msg']['tags']) ) {
+        
+            $options['msg']['title'] = '1';
         }
         
         $options['show_message_in_post'] = intval($options['show_message_in_post']);
@@ -308,6 +231,8 @@ class mgPlugin_WP2TSina {
         if (!is_single($post->ID)) return $content;
         
         if ($tsina_id = get_post_meta($post->ID, 'mg_wp2tsina_id', true)) {
+            
+            $this->post = $post;
         
             $pic = ''; // 分享用的图片地址
             
@@ -316,7 +241,7 @@ class mgPlugin_WP2TSina {
                 function_exists('wp_attachment_is_image') &&
                 function_exists('get_attached_file')) {
                 
-                $aid = get_post_thumbnail_id($post->ID);
+                $aid = get_post_thumbnail_id($this->post->ID);
                 if ($aid && wp_attachment_is_image($aid)) {
                     $pic = wp_get_attachment_url($aid);
                 }
@@ -333,6 +258,7 @@ class mgPlugin_WP2TSina {
             $logo_url = WP_PLUGIN_URL.'/mg-wp2tsina/logo-'.$this->options['logo'].'.png';
             $tsina_user_home = 'http://t.sina.com.cn/'.$this->options['user_id'];
             $blogname = get_bloginfo('name');
+            $text = $this->__get_tsina_content(true);
             
             // 标识开始部分
             $out = <<<HTML
@@ -355,7 +281,7 @@ HTML;
             $out .= <<<HTML
 
     <div class="mgWP2TSina_message">本文已经同步到新浪微博，<a href="{$tsina_user_home}" target="_blank" rel="nofollow">点击这里</a>访问“{$blogname}”的官方微博。</div>
-    <div class="mgWP2TSina_share"><a href="javascript:void((function(s,d,e,r,l,p,t,z,c){var%20f='http://v.t.sina.com.cn/share/share.php?appkey={$this->app_key}',u=z||d.location,p=['&url=',e(u),'&title=',e(t||d.title),'&source=',e(r),'&sourceUrl=',e(l),'&content=',c||'gb2312','&pic=',e(p||'')].join('');function%20a(){if(!window.open([f,p].join(''),'mb',['toolbar=0,status=0,resizable=1,width=440,height=430,left=',(s.width-440)/2,',top=',(s.height-430)/2].join('')))u.href=[f,p].join('');};if(/Firefox/.test(navigator.userAgent))setTimeout(a,0);else%20a();})(screen,document,encodeURIComponent,'','','{$pic}','{$post->post_title}','{$post->guid}','utf-8'));">分享至微博</a></div>
+    <div class="mgWP2TSina_share"><a href="javascript:void((function(s,d,e,r,l,p,t,z,c){var%20f='http://v.t.sina.com.cn/share/share.php?appkey={$this->app_key}',u=z||d.location,p=['&url=',e(u),'&title=',e(t||d.title),'&source=',e(r),'&sourceUrl=',e(l),'&content=',c||'gb2312','&pic=',e(p||'')].join('');function%20a(){if(!window.open([f,p].join(''),'mb',['toolbar=0,status=0,resizable=1,width=440,height=430,left=',(s.width-440)/2,',top=',(s.height-430)/2].join('')))u.href=[f,p].join('');};if(/Firefox/.test(navigator.userAgent))setTimeout(a,0);else%20a();})(screen,document,encodeURIComponent,'','','{$pic}','{$text}','{$this->post->guid}','utf-8'));">分享至微博</a></div>
 </div>
 <!-- // mg-wp2tsina -->
 
@@ -441,6 +367,95 @@ HTML;
     function __friend2me()
     {
         return $this->tsina->friendto(1763927591);
+    }
+    
+    function __get_tsina_content($nolink=false)
+    {
+        $text = '';
+        
+        // 加入分类
+        if (!empty($this->options['msg']['categories'])) {
+            $categories = wp_get_post_categories($this->post->ID);
+            
+            if ($categories) {
+                foreach ($categories as $cat_ID) {
+                    if (intval($cat_ID) > 0) {
+                        $text .= get_cat_name($cat_ID).',';
+                    }
+                }
+                
+                $text = substr($text, 0, -1).':';
+            }
+        }
+        
+        // 加入标题
+        if (!empty($this->options['msg']['title'])) {
+            $text .= stripslashes('《'.strip_tags($this->post->post_title).'》');
+        }
+        
+        // 加入TAG
+        if (!empty($this->options['msg']['tags'])) {
+            $posttags = get_the_tags($post->ID); 
+            if ($posttags) {
+                $tag_text = '';
+                
+                foreach ($posttags as $tag) {
+                    $temp = preg_replace('/[\.\/|]/', '#,#', $tag->name);
+                    $tag_text .= "#{$temp}#,";
+                }
+            }
+            
+            if (!empty($tag_text)) {
+                $text .= ' 关键词:'.substr($tag_text, 0, -1).' ';
+            }
+        }
+        
+        // 加入文章摘要
+        if (!empty($this->options['msg']['excerpt'])) {
+            if (!empty($this->post->post_excerpt)) {
+                $excerpt = strip_tags($this->post->post_excerpt);
+                $excerpt = preg_replace('/[\t\r\n ]/i', '', $excerpt);
+                $text .= $excerpt;
+            }elseif (!empty($this->post->post_content)) {
+                $excerpt .= strip_tags($this->post->post_content);
+                $excerpt = preg_replace('/[\t\r\n ]/i', '', $excerpt);
+                $text .= $excerpt;
+            }
+        }
+        
+        $text = htmlspecialchars_decode($text); // 处理HTML的特殊字符
+        
+        // 获得短链接
+        if (function_exists('wp_get_shortlink')) {
+            $shortlink = wp_get_shortlink($this->post->ID);
+        }else {
+            $shortlink = get_bloginfo('wpurl')."/?p={$this->post->ID}";
+        }
+        
+        //{{{ 对信息长度进行处理
+        $shortlink_length = strlen($shortlink);
+        $text_length = $this->tsina->msg_length($text);
+        $drop_length = $shortlink_length + $text_length - 140 - 2; // -2是因为后面需要加入省略号
+        if ($drop_length > 0) {
+            $text = $this->tsina->substr($text, $text_length - $drop_length);
+        }
+        
+        // 检查裁剪长度后，#是否是偶数，如果不是则去掉最后一个#到结尾的字符串
+        $topic_flag_count = substr_count($text, '#');
+        if ($topic_flag_count%2 !== 0) {
+            $text = preg_replace('/(.*)#.*?$/', '$1', $text);
+        }
+        $text = preg_replace('/,$/', '', $text); // 处理掉最后一个逗号(如果有的话)
+        //}}} 对信息长度进行处理
+        
+        // 如果存在文章内容或者摘要，那么被截断后加入省略号
+        if (!empty($this->post->post_excerpt) || !empty($this->post->post_content)) {
+            $text .= '...';
+        }
+        
+        if (!$nolink) $text .= ' '.$shortlink;
+        
+        return $text;
     }
 }
 

@@ -1,7 +1,7 @@
 === mg-wp2tsina ===
 Contributors: Mike Gaul
 Donate link: http://www.bymg.com/wordpress-plugins/mg-wp2tsina
-Tags: mg,sync,sina
+Tags: mg,sync,sina,微博
 Requires at least: 2.9.2
 Tested up to: 3.0
 Stable tag: 1.0.5
@@ -10,24 +10,22 @@ Stable tag: 1.0.5
 
 == Description ==
 
-本插件的目的非常简单，在保存Wordpress博客文章的时候，帮助将摘要信息同步到新浪微博指定帐号上。
+本插件实现：在保存WordPress博客文章的时候，帮助将摘要信息同步到新浪微博指定帐号上。
 
 插件将允许选择下述内容同步：
 
-* 标题（固定包含）
-* 链接地址（固定包含，使用类似 http://example.org/?p=15 这样的短链接）
+* 标题（可选）
 * 分类名称（可选）
 * 标签列表（可选）
 * 文章摘要（可选）
 * 图片（自动选择）
+* 链接地址（固定包含，使用类似 http://example.org/?p=15 这样的短链接）
 
 上述内容中，除了标题、链接地址和图片，剩余内容在提交前将根据微博信息的长度要求截断，并增加省略号显示。
 
-实际同步文章的效果可以查看 http://t.sina.com.cn/aimai 。
+实际同步文章的效果可以查看 http://t.sina.com.cn/bymgcom 。
 
-一旦同步信息成功，插件还允许用户选择，是否在文章的详细页增加一个新浪微博的图标，以及一小段文字，提示该文章已经同步到新浪微博上，并提供到微博主页的链接。
-
-本插件允许自定义新浪微博API KEY信息，否则将使用我们提供的一个默认的KEY信息。
+一旦同步信息成功，插件还允许用户选择，是否在文章的详细页增加一个新浪微博的图标，以及一小段文字，提示该文章已经同步到新浪微博上，并提供到微博主页的链接。这里，还会有一个“分享“的功能链接，点击会显示新浪微博提供的分享功能窗口。
 
 要同步信息，需要在配置页面输入新浪微博的ID号（全数字格式）和密码。帐号信息将保存在安装插件的博客数据库中。
 
@@ -56,7 +54,7 @@ Stable tag: 1.0.5
 
 == Screenshots ==
 
-后台截屏请查看插件文件夹内screenshot-1.png，或者在线查看：http://www.bymg.com/?attachment_id=19 。
+screenshot-1.png
 
 == Changelog ==
 
@@ -114,7 +112,6 @@ Stable tag: 1.0.5
 
 == 联系我们 ==
 
-在使用过程中，遇到不能兼容或者其它问题，可以通过下面的邮件地址联系到作者：
-<support at bymg dot com>
+在使用过程中，遇到不能兼容或者其它问题，可以通过下面的邮件地址联系到作者：support at bymg dot com 。
 
 最后，希望您能喜欢我们开发的插件。

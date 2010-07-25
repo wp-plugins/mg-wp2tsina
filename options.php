@@ -67,15 +67,18 @@
         <tr valign="top">
             <th scope="row">新浪微博将显示</th>
             <td>
-                标题（必须）
-                &nbsp;&nbsp;
-                链接（必须）
-                &nbsp;&nbsp;
-                <label><input type="checkbox" name="mg_wp2tsina[msg][tags]" value="1"<?php echo !empty($this->options['msg']['tags']) ? ' checked' : ''; ?> />标签</label>
+                <p>
+                <label><input type="checkbox" name="mg_wp2tsina[msg][title]" value="1"<?php echo !empty($this->options['msg']['title']) ? ' checked' : ''; ?> />标题</label>
                 &nbsp;&nbsp;
                 <label><input type="checkbox" name="mg_wp2tsina[msg][categories]" value="1"<?php echo !empty($this->options['msg']['categories']) ? ' checked' : ''; ?> />分类</label>
                 &nbsp;&nbsp;
                 <label><input type="checkbox" name="mg_wp2tsina[msg][excerpt]" value="1"<?php echo !empty($this->options['msg']['excerpt']) ? ' checked' : ''; ?> />内容摘要</label>
+                &nbsp;&nbsp;
+                <label><input type="checkbox" name="mg_wp2tsina[msg][tags]" value="1"<?php echo !empty($this->options['msg']['tags']) ? ' checked' : ''; ?> />标签</label>
+                &nbsp;&nbsp;
+                链接（必须）
+                </p>
+                <span class="description">上述所有内容如果都不选择，那么发布信息的时候会使用文章标题作为内容主体。</span>
             </td>
         </tr>
         <tr valign="top">
