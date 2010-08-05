@@ -48,7 +48,7 @@ Stable tag: 1.1.0
 
 == Screenshots ==
 
-screenshot-1.png
+1. Screenshot 配置页面截图
 
 == Changelog ==
 
