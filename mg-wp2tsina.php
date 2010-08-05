@@ -3,7 +3,7 @@
 Plugin Name: MG WP to t.sina.com
 Plugin URI: http://www.bymg.com/wordpress-plugins/mg-wp2tsina
 Description: 将博客信息推送到新浪微博上
-Version: 1.1.0 Beta2
+Version: 1.1.0
 Author: Mike Gaul
 Author URI: http://www.bymg.com
 */
@@ -46,7 +46,7 @@ class mgPlugin_WP2TSina {
         
         if (is_admin()) {
             add_action('admin_init', array(&$this, 'admin_init'));
-            add_action('save_post', array(&$this, 'sync'), 0);
+            add_action('publish_post', array(&$this, 'sync'), 0);
             add_action('admin_menu', array(&$this, 'add_options_page'));
             add_action('admin_menu', array(&$this, 'add_custom_box_sidebox'));
             add_action('admin_notices', array(&$this, 'admin_notices'));
