@@ -6,8 +6,8 @@ class twSina {
     var $agent = null;
     var $islogined = false;
     
-    var $appkey = 4249926013;
-    var $appsec = '97fb7350dcb36f1703607d51a4f83650';
+    var $appkey = 4240729813;
+    var $appsec = '372fa31b2b69e08124b2b92445cf59b9';
     
     var $last_result = null; // 最后一次返回的结果
     
@@ -167,9 +167,7 @@ class twSina {
     // 以中文2个字符、英文一个字符的方式计算文本长度
     function msg_length($text)
     {
-        return strlen(iconv('utf-8', 'gbk', $text))/2;
-        //return ceil(strlen(preg_replace('/[\x{4e00}-\x{9fa5}]/u', '**', $text))/2);
-        //return ceil(strlen(preg_replace('/[^\x00-\xff]/i', "**", $text))/3);
+        return strlen(preg_replace("/[\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}/", '##', $text));
     }
     
     // 以中文占1个计数、英文半个计数的计算方式截断文本
@@ -177,10 +175,20 @@ class twSina {
     function substr($text, $len=0)
     {
         if ($len === 0) return $text;
-        else $len = $len * 2;
         
-        $text = substr(iconv('utf-8', 'gbk', $text), 0, $len);
-        return iconv('gbk', 'utf-8', trim($this->__utf8_trim($text)));
+        preg_match_all("/(?:[\xE1-\xEC\xEE\xEF][\x80-\xBF]{2})|./", $text, $matches);
+        
+        $return = '';
+        while($len > 0) {
+            $str = array_shift($matches[0]);
+            $return .= $str;
+            if (preg_match("/[\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}/", $str)) {
+                $len -= 1; // 中文消耗一个
+            }else {
+                $len -= 0.5; // 英文消耗半个字
+            }
+        }
+        return $return;
     }
     
     /**
